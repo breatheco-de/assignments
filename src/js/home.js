@@ -61,9 +61,24 @@ export class Home extends React.Component {
 		);
 		this.setState(parsed);
 		if (!parsed.cohort && !parsed.student && !parsed.teacher) {
-			fetch(`${host}/cohorts/`)
-				.then(r => r.json())
-				.then(cohorts => this.setState({ all_cohorts: cohorts.map(c => ({ label: c.name, value: c.slug })) }));
+			fetch(`${host}/cohorts/?access_token=${parsed.bc_token}`, {
+				headers: { "Content-Type": "application/json" }
+			})
+				.then(r => {
+					if (r.status === 403 || r.status === 401) {
+						this.setState({ error: "Invalid or expired token" });
+					} else if (r.ok) {
+						console.log("OK");
+						return r.json();
+					} else {
+						this.setState({ error: "There was an error fetching the cohorts" });
+					}
+				})
+				.then(obj => this.setState({ all_cohorts: obj.data.map(c => ({ label: c.name, value: c.id })) }))
+				.catch(error => {
+					this.setState({ error: "There was an error fetching the cohorts" });
+					console.error("There was an error fetching the cohorts", error);
+				});
 		} else this.updateAssigntments(parsed);
 	}
 	updateAssigntments(params) {
@@ -79,7 +94,7 @@ export class Home extends React.Component {
 			.then(resp => {
 				if (resp.status === 403 || resp.status === 401) {
 					this.setState({ error: "Invalid or expired token" });
-				} else if (resp.ok === 200) {
+				} else if (resp.ok) {
 					return resp.json();
 				} else {
 					this.setState({ error: "There was an error fetching the assignments" });
@@ -107,7 +122,10 @@ export class Home extends React.Component {
 				});
 				this.setState({ catalogs, filters: Object.assign(this.state.filters, { status: atLeastOneDevlivered ? "done" : null }) });
 			})
-			.catch(e => console.error(e));
+			.catch(error => {
+				this.setState({ error: "There was an error fetching the assignments" });
+				console.error("There was an error fetching the assignments", error);
+			});
 	}
 	render() {
 		const badgeColor = status => {
@@ -130,8 +148,8 @@ export class Home extends React.Component {
 		else if (this.state.error) return <div className="alert alert-danger">{this.state.error}</div>;
 		else if (!this.state.cohort)
 			return (
-				<div>
-					<p>Pick a cohort</p>
+				<div className="text-center mt-5 container">
+					<h1>Pick a cohort</h1>
 					<Select
 						options={this.state.all_cohorts}
 						onChange={c => {
