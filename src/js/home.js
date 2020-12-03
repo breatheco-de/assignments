@@ -100,8 +100,8 @@ export class Home extends React.Component {
 					this.setState({ error: "There was an error fetching the assignments" });
 				}
 			})
-			.then(resp => {
-				const assignments = resp.data.filter(t => t.type == "assignment");
+			.then(d => {
+				const assignments = d != undefined ? d.data.filter(t => t.type == "assignment") : [];
 				this.setState({ assignments });
 
 				const catalogs = {
