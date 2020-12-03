@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import qs from "query-string";
 import { Notifier, Notify } from "bc-react-notifier";
+import Select from "react-select";
 
 const host = process.env.API_HOST;
 
@@ -34,8 +35,10 @@ export class Home extends React.Component {
 		super(props);
 		this.state = {
 			assignments: [],
+			error: null,
 			catalogs: null,
 			cohort: null,
+			all_cohorts: [],
 			student: null,
 			teacher: null,
 			filters: {
@@ -57,7 +60,11 @@ export class Home extends React.Component {
 			qs.parse(window.location.search)
 		);
 		this.setState(parsed);
-		this.updateAssigntments(parsed);
+		if (!parsed.cohort && !parsed.student && !parsed.teacher) {
+			fetch(`${host}/cohorts/`)
+				.then(r => r.json())
+				.then(cohorts => this.setState({ all_cohorts: cohorts.map(c => ({ label: c.name, value: c.slug })) }));
+		} else this.updateAssigntments(parsed);
 	}
 	updateAssigntments(params) {
 		let url = "";
@@ -69,7 +76,15 @@ export class Home extends React.Component {
 		fetch(`${url}&access_token=${params.bc_token}`, {
 			cache: "no-cache"
 		})
-			.then(resp => resp.json())
+			.then(resp => {
+				if (resp.status === 403 || resp.status === 401) {
+					this.setState({ error: "Invalid or expired token" });
+				} else if (resp.ok === 200) {
+					return resp.json();
+				} else {
+					this.setState({ error: "There was an error fetching the assignments" });
+				}
+			})
 			.then(resp => {
 				const assignments = resp.data.filter(t => t.type == "assignment");
 				this.setState({ assignments });
@@ -112,6 +127,20 @@ export class Home extends React.Component {
 			}
 		};
 		if (!this.state.bc_token) return <div className="alert alert-danger">Unable to authorize the use of this app</div>;
+		else if (this.state.error) return <div className="alert alert-danger">{this.state.error}</div>;
+		else if (!this.state.cohort)
+			return (
+				<div>
+					<p>Pick a cohort</p>
+					<Select
+						options={this.state.all_cohorts}
+						onChange={c => {
+							this.setState({ cohort: c.value });
+							this.updateAssigntments({ ...this.state, cohort: c.value });
+						}}
+					/>
+				</div>
+			);
 		return (
 			<div>
 				<Notifier />
