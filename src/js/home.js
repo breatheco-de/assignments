@@ -61,7 +61,7 @@ export class Home extends React.Component {
 		);
 		this.setState(parsed);
 		if (!parsed.cohort && !parsed.student && !parsed.teacher) {
-			fetch(`${host}/cohorts/?access_token=${parsed.bc_token}`, {
+			fetch(`${host}/v1/admissions/cohort/all?token=${parsed.bc_token}`, {
 				headers: { "Content-Type": "application/json" }
 			})
 				.then(r => {
@@ -83,12 +83,12 @@ export class Home extends React.Component {
 	}
 	updateAssigntments(params) {
 		let url = "";
-		if (params.student) url = `${host}/task/?student=${params.student}`;
-		else if (params.cohort) url = `${host}/task/?cohort=${params.cohort}`;
-		else if (params.teacher) url = `${host}/task/?teacher=${params.teacher}`;
-		else url = `${host}/task/?`;
+		if (params.student) url = `${host}/v1/assignment/task/?student=${params.student}`;
+		else if (params.cohort) url = `${host}/v1/assignment/task/?cohort=${params.cohort}`;
+		else if (params.teacher) url = `${host}/v1/assignment/task/?teacher=${params.teacher}`;
+		else url = `${host}/v1/assignment/task/?`;
 
-		fetch(`${url}&access_token=${params.bc_token}`, {
+		fetch(`${url}&token=${params.bc_token}`, {
 			cache: "no-cache"
 		})
 			.then(resp => {
@@ -144,7 +144,13 @@ export class Home extends React.Component {
 					return "badge-light";
 			}
 		};
-		if (!this.state.bc_token) return <div className="alert alert-danger">Unable to authorize the use of this app</div>;
+		if (!this.state.bc_token)
+			return (
+				<div className="alert alert-danger">
+					Unable to authorize the use of this app, please{" "}
+					<a href={`${host}/v1/auth/view/login?url=${window.location.href}`}>log in first</a>
+				</div>
+			);
 		else if (this.state.error) return <div className="alert alert-danger">{this.state.error}</div>;
 		else if (!this.state.cohort)
 			return (
