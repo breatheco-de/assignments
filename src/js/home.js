@@ -18,10 +18,10 @@ const ModalComponent = properties => {
 				<button className="btn btn-secondary" onClick={() => properties.onConfirm(false)}>
 					Cancel
 				</button>
-				<button className="btn btn-danger" onClick={() => properties.onConfirm({ comments, revision_status: "rejected" })}>
+				<button className="btn btn-danger" onClick={() => properties.onConfirm({ comments, revision_status: "REJECTED" })}>
 					Mark as Rejected
 				</button>
-				<button className="btn btn-success" onClick={() => properties.onConfirm({ comments, revision_status: "approved" })}>
+				<button className="btn btn-success" onClick={() => properties.onConfirm({ comments, revision_status: "APPROVED" })}>
 					Mark as Approved
 				</button>
 			</p>
@@ -42,8 +42,8 @@ export class Home extends React.Component {
 			student: null,
 			teacher: null,
 			filters: {
-				status: null,
-				revision_status: "pending",
+				task_status: null,
+				revision_status: "PENDING",
 				student: null,
 				assignment: null
 			}
@@ -55,13 +55,13 @@ export class Home extends React.Component {
 				cohort: null,
 				student: null,
 				teacher: null,
-				bc_token: null
+				token: null
 			},
 			qs.parse(window.location.search)
 		);
 		this.setState(parsed);
 		if (!parsed.cohort && !parsed.student && !parsed.teacher) {
-			fetch(`${host}/v1/admissions/cohort/all?token=${parsed.bc_token}`, {
+			fetch(`${host}/v1/admissions/cohort/all?token=${parsed.token}`, {
 				headers: { "Content-Type": "application/json" }
 			})
 				.then(r => {
@@ -74,7 +74,7 @@ export class Home extends React.Component {
 						this.setState({ error: "There was an error fetching the cohorts" });
 					}
 				})
-				.then(obj => this.setState({ all_cohorts: obj.data.map(c => ({ label: c.name, value: c.id })) }))
+				.then(obj => this.setState({ all_cohorts: obj.map(c => ({ label: c.name, value: c.id })) }))
 				.catch(error => {
 					this.setState({ error: "There was an error fetching the cohorts" });
 					console.error("There was an error fetching the cohorts", error);
@@ -83,12 +83,13 @@ export class Home extends React.Component {
 	}
 	updateAssigntments(params) {
 		let url = "";
-		if (params.student) url = `${host}/v1/assignment/task/?student=${params.student}`;
-		else if (params.cohort) url = `${host}/v1/assignment/task/?cohort=${params.cohort}`;
+		if (params.student) url = `${host}/v1/assignment/task/?user=${params.student}`;
+		else if (params.cohort) url = `${host}/v1/assignment/task/?stu_cohort=${params.cohort}`;
 		else if (params.teacher) url = `${host}/v1/assignment/task/?teacher=${params.teacher}`;
 		else url = `${host}/v1/assignment/task/?`;
 
-		fetch(`${url}&token=${params.bc_token}`, {
+		fetch(url, {
+			headers: { Authorization: `Token ${params.token}` },
 			cache: "no-cache"
 		})
 			.then(resp => {
@@ -101,26 +102,29 @@ export class Home extends React.Component {
 				}
 			})
 			.then(d => {
-				const assignments = d != undefined ? d.data.filter(t => t.type == "assignment") : [];
+				const assignments = d != undefined ? d.filter(t => t.task_type == "PROJECT") : [];
 				this.setState({ assignments });
 
 				const catalogs = {
 					associated_slugs: [],
 					students: [],
 					student_ids: [],
-					status: ["pending", "done"],
-					revision_status: ["pending", "approved", "rejected"]
+					task_status: ["PENDING", "DONE"],
+					revision_status: ["PENDING", "APPROVED", "REJECTED"]
 				};
 				let atLeastOneDevlivered = false;
 				const projectsWithDupicates = assignments.forEach(a => {
 					if (!catalogs.associated_slugs.includes(a.associated_slug)) catalogs.associated_slugs.push(a.associated_slug);
-					if (!catalogs.student_ids.includes(a.student_user_id)) {
-						catalogs.students.push(a.student);
-						catalogs.student_ids.push(a.student_user_id);
+					if (!catalogs.student_ids.includes(a.user.id)) {
+						catalogs.students.push(a.user);
+						catalogs.student_ids.push(a.user.id);
 					}
-					if (a.status == "done" && a.revision_status == "pending") atLeastOneDevlivered = true;
+					if (a.task_status == "DONE" && a.revision_status == "PENDING") atLeastOneDevlivered = true;
 				});
-				this.setState({ catalogs, filters: Object.assign(this.state.filters, { status: atLeastOneDevlivered ? "done" : null }) });
+				this.setState({
+					catalogs,
+					filters: Object.assign(this.state.filters, { task_status: atLeastOneDevlivered ? "DONE" : null })
+				});
 			})
 			.catch(error => {
 				this.setState({ error: "There was an error fetching the assignments" });
@@ -132,19 +136,19 @@ export class Home extends React.Component {
 			switch (status) {
 				case null:
 					return "badge-danger";
-				case "pending":
+				case "PENDING":
 					return "badge-danger";
-				case "rejected":
+				case "REJECTED":
 					return "badge-light text-danger";
-				case "approved":
+				case "APPROVED":
 					return "badge-light text-success";
-				case "done":
+				case "DONE":
 					return "badge-light text-success";
 				default:
 					return "badge-light";
 			}
 		};
-		if (!this.state.bc_token)
+		if (!this.state.token)
 			return (
 				<div className="alert alert-danger">
 					Unable to authorize the use of this app, please{" "}
@@ -217,24 +221,24 @@ export class Home extends React.Component {
 										})
 									}>
 									<option value={""}>Filter by teacher status</option>
-									<option value={"pending"}>Pending Revision</option>
-									<option value={"approved"}>Approved</option>
-									<option value={"rejected"}>Rejected</option>
+									<option value={"PENDING"}>Pending Revision</option>
+									<option value={"APPROVED"}>Approved</option>
+									<option value={"REJECTED"}>Rejected</option>
 								</select>
 							</div>
 							<div className="col">
 								<select
 									multiple={false}
 									className="form-control"
-									value={this.state.filters.status}
+									value={this.state.filters.task_status}
 									onChange={e =>
 										this.setState({
-											filters: Object.assign(this.state.filters, { status: e.target.value })
+											filters: Object.assign(this.state.filters, { task_status: e.target.value })
 										})
 									}>
-									<option value={""}>Filter by student status</option>
-									<option value={"pending"}>Not Delivered (pending)</option>
-									<option value={"done"}>Delivered (done)</option>
+									<option value={""}>Filter by task status</option>
+									<option value={"PENDING"}>Not Delivered (PENDING)</option>
+									<option value={"DONE"}>Delivered (DONE)</option>
 								</select>
 							</div>
 						</div>
@@ -261,9 +265,9 @@ export class Home extends React.Component {
 										)
 											return false;
 										if (
-											this.state.filters.status &&
-											this.state.filters.status != "" &&
-											a.status != this.state.filters.status
+											this.state.filters.task_status &&
+											this.state.filters.task_status != "" &&
+											a.task_status != this.state.filters.task_status
 										)
 											return false;
 										if (
@@ -283,14 +287,16 @@ export class Home extends React.Component {
 									.map((a, i) => (
 										<tr key={i}>
 											<td>
-												<span className={`badge ${badgeColor(a.status)}`}>{a.status == "done" ? "Yes" : "No"}</span>
+												<span className={`badge ${badgeColor(a.task_status)}`}>
+													{a.task_status == "DONE" ? "Yes" : "No"}
+												</span>
 											</td>
 											<td>
 												<span className={`badge ${badgeColor(a.revision_status)}`}>
-													{a.revision_status ? a.revision_status : "pending"}
+													{a.revision_status ? a.revision_status : "PENDING"}
 												</span>
 											</td>
-											<td>{a.student ? a.student.first_name + " " + a.student.last_name : "Loading..."}</td>
+											<td>{a.user ? a.user.first_name + " " + a.user.last_name : "Loading..."}</td>
 											<td>
 												<a
 													rel="noopener noreferrer"
@@ -301,31 +307,30 @@ export class Home extends React.Component {
 											</td>
 											<td>
 												{a.github_url && (
-													<button className="btn btn-primary btn-sm" onClick={() => window.open(a.github_url)}>
+													<button className="btn btn-light btn-sm" onClick={() => window.open(a.github_url)}>
 														Github
 													</button>
 												)}
 												{a.live_url && (
-													<button className="btn btn-primary btn-sm" onClick={() => window.open(a.live_url)}>
+													<button className="btn btn-light btn-sm" onClick={() => window.open(a.live_url)}>
 														Live
 													</button>
 												)}
 											</td>
 											<td>
-												<select
-													className="form-control"
-													value={a.revision_status}
-													onChange={e => {
+												<button
+													className="form-control btn btn-primary"
+													onClick={e => {
 														let noti = Notify.add(
 															"info",
 															ModalComponent,
 															answer => {
 																if (answer)
-																	fetch(host + "/teachers/assignment/" + a.id, {
+																	fetch(host + "/v1/assignment/task/" + a.id, {
 																		method: "PUT",
 																		headers: {
 																			"Content-Type": "application/json",
-																			Authorization: `Bearer ${this.state.bc_token}`
+																			Authorization: `Token ${this.state.token}`
 																		},
 																		body: JSON.stringify(
 																			Object.assign(a, {
@@ -334,18 +339,23 @@ export class Home extends React.Component {
 																			})
 																		)
 																	})
-																		.then(resp => resp.json())
+																		.then(async resp => {
+																			if (resp.status == 200) {
+																				return resp.json();
+																			} else {
+																				const error = await resp.json();
+																				throw error.detail;
+																			}
+																		})
 																		.then(data => {
-																			if (data.code == 200) {
-																				Notify.success("The task was successfully updated");
-																				this.setState({
-																					assignments: this.state.assignments.map(a => {
-																						if (a.id == data.data.id)
-																							a.revision_status = data.data.revision_status;
-																						return a;
-																					})
-																				});
-																			} else Notify.error(data.msg || data);
+																			Notify.success("The task was successfully updated");
+																			this.setState({
+																				assignments: this.state.assignments.map(a => {
+																					if (a.id == data.id)
+																						a.revision_status = data.revision_status;
+																					return a;
+																				})
+																			});
 																		})
 																		.catch(err => Notify.error(err.msg || err));
 																noti.remove();
@@ -353,10 +363,8 @@ export class Home extends React.Component {
 															9999999999999
 														);
 													}}>
-													<option value={null}>Mark as...</option>
-													<option value={"approved"}>Approved</option>
-													<option value={"rejected"}>Rejected</option>
-												</select>
+													Review
+												</button>
 											</td>
 										</tr>
 									))}
