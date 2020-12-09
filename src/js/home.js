@@ -38,6 +38,7 @@ export class Home extends React.Component {
 			error: null,
 			catalogs: null,
 			cohort: null,
+			sync_status: { status: "idle", message: "Sync cohort assignments" },
 			all_cohorts: [],
 			student: null,
 			teacher: null,
@@ -173,6 +174,43 @@ export class Home extends React.Component {
 			<div>
 				<Notifier />
 				<div className="text-center mt-5 container">
+					<button
+						onClick={() => {
+							this.setState({ cohort: null, sync_status: { status: "idle", message: "Sync cohort tasks" } });
+						}}
+						className={"btn btn-secondary float-right "}>
+						<i className="fas fa-random" /> Change cohort
+					</button>
+					<button
+						onClick={() => {
+							this.setState({ sync_status: { status: "loading", message: "loading" } });
+							fetch(host + "/v1/assignment/sync/cohort/" + this.state.cohort + "/task", {
+								method: "POST",
+								headers: {
+									Authorization: `Token ${this.state.token}`
+								}
+							})
+								.then(async resp => {
+									if (resp.status === 200) return resp.json();
+									else if (resp.status === 400) {
+										const error = await resp.json();
+										throw new Error(error.detail || "Error");
+									} else throw Error("Error");
+								})
+								.then(tasks => {
+									const assignments = Array.isArray(tasks) ? tasks.filter(t => t.task_type == "PROJECT") : [];
+									this.setState({
+										assignments,
+										sync_status: { status: "btn-success", message: tasks.length + " tasks updated" }
+									});
+								})
+								.catch(error =>
+									this.setState({ sync_status: { status: "btn-danger", message: error.message || error.msg || error } })
+								);
+						}}
+						className={"sync-btn mr-2 btn btn-secondary float-right " + this.state.sync_status.status}>
+						<i className={"fas fa-sync"} /> {this.state.sync_status.message}
+					</button>
 					<h2>Student Assignments</h2>
 					{this.state.catalogs && (
 						<div className="row mb-2">
