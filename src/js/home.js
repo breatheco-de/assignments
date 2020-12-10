@@ -82,6 +82,28 @@ export class Home extends React.Component {
 				});
 		} else this.updateAssigntments(parsed);
 	}
+	updateCatalogs(assignments) {
+		const catalogs = {
+			associated_slugs: [],
+			students: [],
+			student_ids: [],
+			task_status: ["PENDING", "DONE"],
+			revision_status: ["PENDING", "APPROVED", "REJECTED"]
+		};
+		let atLeastOneDevlivered = false;
+		const projectsWithDupicates = assignments.forEach(a => {
+			if (!catalogs.associated_slugs.includes(a.associated_slug)) catalogs.associated_slugs.push(a.associated_slug);
+			if (!catalogs.student_ids.includes(a.user.id)) {
+				catalogs.students.push(a.user);
+				catalogs.student_ids.push(a.user.id);
+			}
+			if (a.task_status == "DONE" && a.revision_status == "PENDING") atLeastOneDevlivered = true;
+		});
+		this.setState({
+			catalogs,
+			filters: Object.assign(this.state.filters, { task_status: atLeastOneDevlivered ? "DONE" : null })
+		});
+	}
 	updateAssigntments(params) {
 		let url = "";
 		if (params.student) url = `${host}/v1/assignment/task/?user=${params.student}`;
@@ -105,27 +127,7 @@ export class Home extends React.Component {
 			.then(d => {
 				const assignments = d != undefined ? d.filter(t => t.task_type == "PROJECT") : [];
 				this.setState({ assignments });
-
-				const catalogs = {
-					associated_slugs: [],
-					students: [],
-					student_ids: [],
-					task_status: ["PENDING", "DONE"],
-					revision_status: ["PENDING", "APPROVED", "REJECTED"]
-				};
-				let atLeastOneDevlivered = false;
-				const projectsWithDupicates = assignments.forEach(a => {
-					if (!catalogs.associated_slugs.includes(a.associated_slug)) catalogs.associated_slugs.push(a.associated_slug);
-					if (!catalogs.student_ids.includes(a.user.id)) {
-						catalogs.students.push(a.user);
-						catalogs.student_ids.push(a.user.id);
-					}
-					if (a.task_status == "DONE" && a.revision_status == "PENDING") atLeastOneDevlivered = true;
-				});
-				this.setState({
-					catalogs,
-					filters: Object.assign(this.state.filters, { task_status: atLeastOneDevlivered ? "DONE" : null })
-				});
+				this.updateCatalogs(assignments);
 			})
 			.catch(error => {
 				this.setState({ error: "There was an error fetching the assignments" });
@@ -203,6 +205,7 @@ export class Home extends React.Component {
 										assignments,
 										sync_status: { status: "btn-success", message: tasks.length + " tasks updated" }
 									});
+									this.updateCatalogs(assignments);
 								})
 								.catch(error =>
 									this.setState({ sync_status: { status: "btn-danger", message: error.message || error.msg || error } })
@@ -299,7 +302,7 @@ export class Home extends React.Component {
 										if (
 											this.state.filters.student &&
 											this.state.filters.student != "" &&
-											a.student_user_id != this.state.filters.student
+											a.user.id != this.state.filters.student
 										)
 											return false;
 										if (
