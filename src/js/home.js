@@ -29,6 +29,43 @@ const ModalComponent = properties => {
 	);
 };
 
+const DeliverComponent = properties => {
+	const [copied, setCopied] = useState(false);
+	const copy = () => {
+		var copyText = document.getElementById("myInput");
+		navigator.clipboard.writeText(properties.delivery_url);
+		setCopied(true);
+	};
+	console.log(properties);
+	return (
+		<div className="confirm-status-change text-center">
+			<h3>Send this URL to the student</h3>
+			<div className="input-group mb-3">
+				<input type="text" className="form-control" value={properties.delivery_url} onClick={e => e.target.select()} />
+				<div className="input-group-append pointer">
+					{!copied ? (
+						<span className="input-group-text" onClick={() => copy()}>
+							click to copy
+						</span>
+					) : (
+						<span className="input-group-text text-success">
+							<i className="fas fa-check" /> copied
+						</span>
+					)}
+				</div>
+			</div>
+			<p className="text-center">
+				<button className="btn btn-danger" onClick={() => properties.onConfirm({ revision_status: "IGNORED" })}>
+					Ignore Task
+				</button>
+				<button className="btn btn-secondary" onClick={() => properties.onConfirm(false)}>
+					Close
+				</button>
+			</p>
+		</div>
+	);
+};
+
 //create your first component
 export class Home extends React.Component {
 	constructor(props) {
@@ -38,6 +75,7 @@ export class Home extends React.Component {
 			error: null,
 			catalogs: null,
 			cohort: null,
+			academy: null, //academy id
 			sync_status: { status: "idle", message: "Sync cohort assignments" },
 			all_cohorts: [],
 			student: null,
@@ -75,7 +113,7 @@ export class Home extends React.Component {
 						this.setState({ error: "There was an error fetching the cohorts" });
 					}
 				})
-				.then(obj => this.setState({ all_cohorts: obj.map(c => ({ label: c.name, value: c.id })) }))
+				.then(obj => this.setState({ all_cohorts: obj.map(c => ({ label: c.name, value: c.id, academy: c.academy.id })) }))
 				.catch(error => {
 					this.setState({ error: "There was an error fetching the cohorts" });
 					console.error("There was an error fetching the cohorts", error);
@@ -166,7 +204,7 @@ export class Home extends React.Component {
 					<Select
 						options={this.state.all_cohorts}
 						onChange={c => {
-							this.setState({ cohort: c.value });
+							this.setState({ cohort: c.value, academy: c.academy });
 							this.updateAssigntments({ ...this.state, cohort: c.value });
 						}}
 					/>
@@ -328,53 +366,125 @@ export class Home extends React.Component {
 												)}
 											</td>
 											<td>
-												<button
-													className="form-control btn btn-primary"
-													onClick={e => {
-														let noti = Notify.add(
-															"info",
-															ModalComponent,
-															answer => {
-																if (answer)
-																	fetch(host + "/v1/assignment/task/" + a.id, {
-																		method: "PUT",
-																		headers: {
-																			"Content-Type": "application/json",
-																			Authorization: `Token ${this.state.token}`
-																		},
-																		body: JSON.stringify(
-																			Object.assign(a, {
-																				revision_status: answer.revision_status,
-																				description: answer.comments
-																			})
-																		)
-																	})
-																		.then(async resp => {
-																			if (resp.status == 200) {
-																				return resp.json();
-																			} else {
-																				const error = await resp.json();
-																				throw error.detail;
-																			}
-																		})
-																		.then(data => {
-																			Notify.success("The task was successfully updated");
-																			this.setState({
-																				assignments: this.state.assignments.map(a => {
-																					if (a.id == data.id)
-																						a.revision_status = data.revision_status;
-																					return a;
+												{a.task_status == "DONE" ? (
+													<button
+														className="form-control btn btn-primary"
+														onClick={e => {
+															let noti = Notify.add(
+																"info",
+																ModalComponent,
+																answer => {
+																	if (answer)
+																		fetch(host + "/v1/assignment/task/" + a.id, {
+																			method: "PUT",
+																			headers: {
+																				"Content-Type": "application/json",
+																				Authorization: `Token ${this.state.token}`
+																			},
+																			body: JSON.stringify(
+																				Object.assign(a, {
+																					revision_status: answer.revision_status,
+																					description: answer.comments
 																				})
-																			});
+																			)
 																		})
-																		.catch(err => Notify.error(err.msg || err));
-																noti.remove();
-															},
-															9999999999999
-														);
-													}}>
-													Review
-												</button>
+																			.then(async resp => {
+																				if (resp.status == 200) {
+																					return resp.json();
+																				} else {
+																					const error = await resp.json();
+																					throw error.detail;
+																				}
+																			})
+																			.then(data => {
+																				Notify.success("The task was successfully updated");
+																				this.setState({
+																					assignments: this.state.assignments.map(a => {
+																						if (a.id == data.id)
+																							a.revision_status = data.revision_status;
+																						return a;
+																					})
+																				});
+																			})
+																			.catch(err => Notify.error(err.msg || err));
+																	noti.remove();
+																},
+																9999999999999
+															);
+														}}>
+														Review
+													</button>
+												) : (
+													<button
+														className="form-control btn btn-secondary"
+														onClick={async e => {
+															const resp = await fetch(host + `/v1/assignment/task/${a.id}/deliver`, {
+																headers: {
+																	"Content-Type": "application/json",
+																	Authorization: `Token ${this.state.token}`,
+																	academy: `${this.state.academy}`
+																}
+															});
+															if (resp.status > 299) {
+																const error = await resp.json();
+																Notify.error(error.detail || error.message || error.msg);
+																return;
+															}
+
+															const _task = await resp.json();
+															let noti = Notify.add(
+																"info",
+																p => (
+																	<DeliverComponent
+																		onConfirm={p.onConfirm}
+																		delivery_url={_task.delivery_url}
+																	/>
+																),
+																answer => {
+																	if (answer)
+																		fetch(host + "/v1/assignment/task/" + a.id, {
+																			method: "PUT",
+																			headers: {
+																				"Content-Type": "application/json",
+																				Authorization: `Token ${this.state.token}`
+																			},
+																			body: JSON.stringify(
+																				Object.assign(a, {
+																					revision_status: answer.revision_status
+																				})
+																			)
+																		})
+																			.then(async resp => {
+																				if (resp.status == 200) {
+																					return resp.json();
+																				} else {
+																					const error = await resp.json();
+																					throw error;
+																				}
+																			})
+																			.then(data => {
+																				Notify.success("The task was successfully updated");
+																				this.setState({
+																					assignments: this.state.assignments.map(a => {
+																						if (a.id == data.id)
+																							a.revision_status = data.revision_status;
+																						return a;
+																					})
+																				});
+																			})
+																			.catch(err =>
+																				Notify.error(
+																					err.revision_status || err.detail || err.msg || err
+																				)
+																			);
+																	noti.remove();
+																},
+																9999999999999
+															);
+														}}>
+														Deliver
+													</button>
+												)}
 											</td>
 										</tr>
 									))}
